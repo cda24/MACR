@@ -88,9 +88,10 @@ class System:
 
     """
 
-    def __init__(self, system=None):
+    def __init__(self, system=None, system_id: str = None):
         # initialise system
         self.system = system
+        self.system_id = system_id
 
         # initialise attributes
         self.activeLayers = None
@@ -100,6 +101,7 @@ class System:
         # initialise response matrix
         self.rm = None
 
+    # hidden methods
     def _initaliseEnergies(self):
         assert self.system != []
         if self.initialEnergies is None:
@@ -356,7 +358,13 @@ class System:
             "Active Flag": [s.active for s in self],
         }
 
-        return pd.DataFrame.from_dict(out, orient="index").T
+        df = pd.DataFrame.from_dict(out, orient="index").T
+
+        # Add system ID to output
+        if self.system_id:
+            df.insert(0, "System ID", self.system_id)
+
+        return df
 
     def _saveSystem(self, file):
         with open(file, "wb") as f:
