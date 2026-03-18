@@ -39,10 +39,7 @@ class Material:
         # initialise or use engine
         assert (isinstance(engine, str)) or (isinstance(engine, Engine))
 
-        if isinstance(engine, str):
-            self.engine = Engine(engine)
-        else:
-            self.engine = engine
+        self.set_engine(engine)
 
         self.material = self.engine.parse_formula(material)
         self.density = density
@@ -145,12 +142,19 @@ class Material:
         self.output["track_map"] = track_map
         self.output["zsteps"] = zsteps
 
+    def set_engine(self, engine):
+        if isinstance(engine, str):
+            self.engine = Engine(engine)
+        else:
+            self.engine = engine
+
     # depreciating functions
     def generateCrossSections(self, material, energies):
         self.update_cross_sections(energies)
 
     def regenerateCrossSections(self):
         self.update_cross_sections(self.energies)
+
 
 class Scintillator(Material):
     def __init__(
