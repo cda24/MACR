@@ -5,11 +5,15 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-
+.pytest_cache/
+# VScode Configurations
 .vscode*/**
+.pixi/
 
+# notebooks and dev
 **/*.ipynb
+dev/
 
+# generics 
 .DS_Store
-
 *.h5
