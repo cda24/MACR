@@ -101,6 +101,9 @@ class System:
         # initialise response matrix
         self.rm = None
 
+        if self.system is not None:
+            self.generate_response()
+
     def _initaliseEnergies(self):
         assert self.system != []
         if self.initialEnergies is None:

@@ -11,17 +11,25 @@ It contains a database of cross-sections for each element, which are then combin
 
 For the source code of examples and the verification notebooks please clone the git repository and pip install locally:
 
-1. Clone the repository:
+1. **Clone the repository:**
 
     ```bash
     git clone https://github.com/cda24/MACR.git 
     ```
 
-2. Install the package:
+2. **Install the package:**
 
     ```bash
     pip install -e .
     ```
+
+    To also install the imaging library use:
+
+    ```bash
+    pip install -e .[imaging]
+    ```
+
+
 
 ## Description
 
@@ -30,6 +38,24 @@ MACR is structured as follows:
 * `Material` class utilises the `engine` and generates an object with a fixed density and set of energies to consider. Using solely the `material` allows users to determine the cross-sections as a function of energy - similar to NIST XCOM, generate the transmission/absorption functions for a set length - similar to CRXO, and/or calculate the deposition profile - similar to SRIM.
 * `Layer` class is then built upon the Material class to wrap a single material with a defined thickness, layers are also defined as _active_ or not as a flag to determine if these layers can be used to detect radiation. 
 * `System` class is built from `Layers` (or directly from `Materials` although this is more cumbersome) to define a series or areal pattern of filters and active layers. This class makes it simple to generate response matrices for both linear and areal absorption spectromters. Both for RCF stacks with proton deposition and x-ray spectrometers can be constructed in MACR.
+
+MACR Reconstruction contains two additional modules:
+_To retrieve measurements from an image_
+* `ROI` a class/factory to build rectangular, circular, or generic polygon shapes that can be used to interrogate images. By default ROI objects have three abstract methods:
+    * `.plot_coords()` Returns x,y list to for plotting region over image
+    * `.image_coords()` Returns slices or a mask to permit operation on an image
+    * `.contains_point()` Checks if a specific point is within the target region
+  
+  And can operate directly on images by:
+    * `ROI.[mean,max,min,std](Image)` which calculates the respective method for the defined ROI. 
+    * Custom functions can be directly applied to the image by `ROI._apply_func(image, function)`. Functions should return a scalar value and act on an np.array but are not strongly typed.
+
+  ROI's are defined in pixels by:  
+  `region_rect = ROI(x=x0,y=y0,h=h,w=w,kind='Rectangular')`   
+  `region_circ = ROI(x=x0,y=y0,r=r,kind='Circular')`  
+  `region_poly = ROI(vertices = [X,Y],kind='Poly')` 
+
+_To convert measurements to spectra_
 
 
 Helper tools for ROI analysis of images, and direct unfolding from measurements are in development. 
