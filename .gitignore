@@ -19,3 +19,6 @@ dev/
 # generics 
 .DS_Store
 *.h5
+
+# docs
+docs/_build/

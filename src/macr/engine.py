@@ -19,6 +19,8 @@ AVAILABLE_DATABASES: Final[frozenset[str]] = frozenset(
 )
 
 class NISTColumn(IntEnum):
+    """Available NIST XCOM cross-section columns."""
+
     COHERENT_SCATTER = 1
     INCOHERENT_SCATTER = 2
     PHOTOELECTRIC_ABSORPTION = 3
@@ -27,22 +29,30 @@ class NISTColumn(IntEnum):
     TOTAL = 6
 
 class ESTARColumn(IntEnum):
+    """Available NIST ESTAR stopping-power columns."""
+
     COLLISIONAL = 1
     RADIATIVE = 2
     TOTAL = 3
 
 class PSTARColumn(IntEnum):
+    """Available NIST PSTAR stopping-power columns."""
+
     COLLISIONAL = 1
     RADIATIVE = 2
     TOTAL = 3
 
 class SRIMColumn(IntEnum):
+    """Available SRIM stopping-power columns."""
+
     ELECTRONIC = 1
     NUCLEAR = 2
     TOTAL = 3
 
 @dataclass(frozen=True)
 class EngineConfig:
+    """Configuration required to read one cross-section database."""
+
     skip_rows: int
     default_column: int
     avail_columns: IntEnum
@@ -76,50 +86,25 @@ ENGINE_CONFIGS: dict[str, EngineConfig] = {
 
 @dataclass
 class EngineDatabase:
+    """Atomic metadata and material names loaded for an engine."""
+
     atomic: pd.DataFrame
     material_list: list[str]
 
 
 class Engine:
     """
-    Engine Class for pyNIST Library
+    Handles the communication to the local database of elements for the `Material` classes
+    This can be pre-loaded for efficient operation but is otherwise unnecessary for end users as `Material` can load engine on demand.
 
-    Handles the communication to the local database of elements for the pyNIST material classes
-    Requires specifying the desired libray between NIST and ESTAR.
-
-    This can be pre-loaded for efficient operation but is otherwise unnecessary for end users
-    as Material class loads engine on demand.
-
-    Series of helper functions handle the offset in energy require for non-unique values in database,
-    parse formulas into elemental consituent parts and effectively handle the atomic weight calculations
-    corresponding to fractional weights of materials.
-
-    Warning: Lowercase element names are ignored in parse_formula function and will error the system
-
-    Intialisation Parameters
+    Parameters
     ----------
-    name - str - ESTAR or NIST
+    name : {"NIST", "ESTAR", "PSTAR", "SRIM"}
+        Database to use for cross-section data.
 
-    Functions
-    ---------
-
-    Automatic - Happens during Initialisation:
-        _generate_atomic_table - loads atomic weights, atomic numbers from database file
-        _generate_material_list - generates list of materials in the database
-        skiprows, col values - pre-declared values to enable scraping of the database files
-                             - can be varied by user via "change_column" method
-
-    Manual - Called by user:
-        parse_forumla - seperates a given chemical composotion into constituent
-                        elements and number
-        db_scraper - for material loads/interpolates the cross-sections for given
-                     energies, if energies are not declared it loads default values.
-                     Non-unique values are nudged by 0.1 eV to enable interpolation but
-                     preserve k-edge
-        change_column - by default the Engine returns the total cross-section for
-                               each element, this method switches the column read by the
-                               scraper. Call Engine.change_column? for more details
-
+    Notes
+    -----
+    Element symbols in chemical formulas must use their conventional capitalisation.
     """
 
     def __init__(self, name: Literal["NIST", "ESTAR", "PSTAR", "SRIM"]) -> None:
@@ -145,13 +130,18 @@ class Engine:
         if config.warning:
             print(config.warning)
 
-    def parse_formula(self, formula: str) -> dict:
-        """
-        Parses a chemical formula and returns a dictionary mapping elements to their respective counts in the formula.
-        Args:
-        formula: A string representing a chemical formula.
-        Returns:
-        A dictionary mapping elements to their respective counts in the formula.
+    def parse_formula(self, formula: str) -> dict[str, float]:
+        """Parse a chemical formula into element counts.
+
+        Parameters
+        ----------
+        formula : str
+            Chemical formula, such as ``"SiO2"`` or ``"BaFBr0.85"``.
+
+        Returns
+        -------
+        dict[str, float]
+            Mapping from element symbols to their counts.
         """
         # Initialize a dictionary to store the element counts
         element_counts = {}
@@ -175,35 +165,41 @@ class Engine:
         # Return the element counts dictionary
         return element_counts
 
-    def missing_atomic_entries(self):
-        """
-        Return list of atomic symbols present in the atomic DB but missing as
-        individual material files for this Engine instance.
+    def missing_atomic_entries(self) -> list[str]:
+        """Return atomic symbols without corresponding material files.
+
+        Returns
+        -------
+        list[str]
+            Sorted symbols present in the atomic database but absent from the selected cross-section database.
         """
         atomic_symbols = set(self.database.atomic["Symbol"].astype(str).tolist())
         missing = sorted(list(atomic_symbols - self._materials))
         return missing
 
-    def list_available_columns(self):
-        """
-        Lists the available columns for the current engine.
-        """
+    def list_available_columns(self) -> None:
+        """Print the cross-section columns available for this engine. (based on the loaded database)"""
         for e in ENGINE_CONFIGS[self.name].avail_columns:
             print(f"{e.name}: {e.value}")
 
-    def change_column(self, new_col: int):
-        """
-        Changes the column read by the database scraper.
-        Use Engine.list_available_columns() to see valid columns.
-        The appropriate Column Enum can be used to select the desired column for the given engine.
-
-        Example:
-        >> nist_engine = Engine("NIST")
-        >> nist_engine.change_column(NISTColumn.COHERENT_SCATTER)
+    def change_column(self, new_col: int) -> None:
+        """Select the cross-section column read by :meth:`db_scraper`.
+        Use method :meth:`list_available_columns` to see valid columns for the current engine.
 
         Parameters
         ----------
-        new_col: int - the column number to read from the database file. Must be a valid column for the given engine.
+        new_col : int
+            Valid column number for the configured database. The corresponding column enum, such as :class:`NISTColumn`, may be used.
+
+        Raises
+        ------
+        ValueError
+            If ``new_col`` is not available for this engine.
+
+        Examples
+        -----
+        >>> engine = Engine("NIST")
+        >>> engine.change_column(NISTColumn.COHERENT_SCATTER)
         """
         # Check if the new column is valid for the current engine
         if new_col not in [e.value for e in ENGINE_CONFIGS[self.name].avail_columns]:
@@ -213,10 +209,21 @@ class Engine:
         self.col = new_col
         print(f"Column changed to {ENGINE_CONFIGS[self.name].avail_columns(new_col).name} ({new_col}) for engine {self.name}.")
 
-    def db_scraper(self, material, energies=None):
-        """
-        Rewrite of the main db_scraper function using pandas
-        More flexible for the SRIM database
+    def db_scraper(self, material, energies=None) -> tuple[np.ndarray, np.ndarray]:
+        """Load and optionally interpolate cross-sections for a material.
+
+        Parameters
+        ----------
+        material : str
+            Element or material name present in the selected database.
+        energies : array-like or None, optional
+            Energies in MeV at which to interpolate the cross-section. If
+            ``None``, return the database energies.
+
+        Returns
+        -------
+        tuple[numpy.ndarray, numpy.ndarray]
+            Energy values and corresponding cross-sections.
         """
         assert material in self._materials, (
             f"{material} not present in {self.name} database consider updating repository"
@@ -292,21 +299,15 @@ class Engine:
 
                     return e_list, c_list
 
-    def _declare_new_columns(self, val: int):
-        """
-        Deprecated method for changing the column read by the database scraper.
-        Use change_column(new_col) instead.
-        """
+    def _declare_new_columns(self, val: int) -> None:
+        """Change the selected column using the deprecated API."""
         print(
             "Warning: _declare_new_columns is deprecated. Use change_column(new_col) instead."
         )
         self.change_column(val)
 
-    def _generate_atomic_table(self):
-        """
-        Return dataframe for atomic number and weight
-        Includes symbol parsing frame as well
-        """
+    def _generate_atomic_table(self) -> pd.DataFrame:
+        """Build the atomic-number, weight, and density lookup table."""
         df = pd.read_csv(
             f"{DATABASE_DIR}/atomic_weight.db",
             delimiter="\t",
@@ -325,19 +326,24 @@ class Engine:
 
         return df
 
-    def _generate_material_list(self):
-        """
-        returns list of available elements in database to mitigate errors
-        eventually redundant as the database is completed
-        """
+    def _generate_material_list(self) -> list[str]:
+        """Return material names available in the selected database."""
         self._fileslist = glob.glob(self.db_path + "*.txt")
         self._materials = set(Path(f).stem.split("_")[-1] for f in self._fileslist)
         return [f.split("_")[-1].split(".")[0] for f in self._fileslist]
 
-    def _parse_value(self, val):
-        """
-        try/except function to correct the formatting on values in the database
-        Weird bug work around
+    def _parse_value(self, val) -> float | str:
+        """Parse an atomic weight value from the database format.
+
+        Parameters
+        ----------
+        val : str
+            Atomic weight value
+
+        Returns
+        -------
+        float or str
+            Parsed atomic weight value as a float, or the original string if parsing fails.
         """
         try:
             if "[" in val:
@@ -349,9 +355,20 @@ class Engine:
         except ValueError:
             return val
 
-    def _nonuniquer(self, arr, offset=1e-7):
-        """
-        Shifts the k-edge in material databases by 0.1 eV to enable interpolation at the edge
+    def _nonuniquer(self, arr, offset=1e-7) -> np.ndarray:
+        """Shifts the k-edge in material databases by 0.1 eV to enable interpolation at the edge.
+
+        Parameters
+        ----------
+        arr : numpy.ndarray
+            Energy values to adjust.
+        offset : float, default=1e-7
+            Increment applied.
+
+        Returns
+        -------
+        numpy.ndarray
+            Copy of ``arr`` with values shifted.
         """
         result = arr.copy()  # Create a copy of the input array to work with
         seen_values = {}  # A dictionary to store the count of each value
@@ -370,4 +387,20 @@ class Engine:
         return result
 
     def _interpolation(self, e, sigma, method=pchip):
+        """Interpolate cross-section data using the specified method.
+
+        Parameters
+        ----------
+        e : numpy.ndarray
+            Energy values.
+        sigma : numpy.ndarray
+            Cross-section values.
+        method : callable, default=pchip
+            Interpolation method to use. Must be a callable that takes two arguments (x, y) and returns an interpolating function.
+
+        Returns
+        -------
+        callable
+            Interpolating function that can be called with new energy values to obtain interpolated cross-section values.
+        """
         return method(e, sigma)

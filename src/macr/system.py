@@ -11,51 +11,75 @@ import copy
 
 
 class Layer:
-    """
-    Declarations of material with specific thickness and active flag for use in System
+    """Material with a thickness and active-detector flag.
+
     Attributes
     ----------
-    material : Material class
+    material : Material
         The material of the layer.
     thickness : float
         The thickness of the layer in mm.
-    active : boolean
-        flag to indicate if layer is active or not.
+    active : bool
+        Whether the layer contributes to the response matrix.
     """
 
-    def __init__(self, material: Material, thickness: float, active: bool):
-        """
-        Initialises a Layer with a Material and thickness.
+    def __init__(self, material: Material, thickness: float, active: bool) -> None:
+        """Initialise a layer.
 
-        The material of the layer - type, Material
-        The thickness of the layer in mm - type, Float
-        Flag to indicate active or not - type, Bool
+        Parameters
+        ----------
+        material : Material
+            Material represented by the layer.
+        thickness : float
+            Layer thickness in mm.
+        active : bool
+            Whether the layer is an active detector layer.
         """
         self.material = material
         self.thickness: float = thickness
         self.active: bool = active
         self.energies: np.ndarray = self.material.energies
 
-    def get_transmission(self):
-        """
-        Exposes the Material get_transmission function
+    def get_transmission(self) -> np.ndarray:
+        """Return transmission through this layer.
+
+        Returns
+        -------
+        numpy.ndarray
+            Transmission values for each energy.
         """
         return self.material.get_transmission(self.thickness)
 
-    def get_absorption(self):
-        """
-        Exposes the Material get_transmission function
+    def get_absorption(self) -> np.ndarray:
+        """Return absorption in this layer.
+
+        Returns
+        -------
+        numpy.ndarray
+            Absorption values for each energy.
         """
         return self.material.get_absorption(self.thickness)
 
-    def set_energies(self, new_energies):
-        """
-        Regenerate cross-sections for new energies
+    def set_energies(self, new_energies) -> None:
+        """Regenerate cross-sections for new energies.
+
+        Parameters
+        ----------
+        new_energies : array-like
+            Energy values in MeV.
         """
         self.energies = new_energies
         self.regenerate_material()
 
     def set_engine(self, new_engine: Engine | str):
+        """Replace the attenuation engine and recalculate cross-sections.
+
+        Parameters
+        ----------
+        new_engine : Engine or str
+            Engine instance or one of ``"NIST"``, ``"SRIM"``, ``"PSTAR"``,
+            or ``"ESTAR"``.
+        """
         if isinstance(new_engine, str):
             assert new_engine in ["NIST", "SRIM", "PSTAR", "ESTAR"]
             new_engine = Engine(new_engine)
@@ -63,22 +87,18 @@ class Layer:
         self.regenerate_material()
 
     def regenerate_material(self):
+        """Recalculate the material cross-sections at the layer energies."""
         self.material.update_cross_sections(self.energies)
 
 
 
 class System:
-    """
-    List of Materials and thickness to streamline building of response matrices
+    """Collection of layers used to calculate response matrices.
 
-    Input should be defined as a series of Layers either in one go:
-        [Layer, Layer,...]
-    Or via sequential add_layer commands:
-        system = System()
-        system.add_layer(Layer)
-        system.add_layer(Layer)
-        system.add_system(System)
-
+    Parameters
+    ----------
+    system : sequence of Layer or None, optional
+        Initial layers. Layers can also be added with :meth:`add_layer`.
     """
 
     def __init__(self, system=None):
@@ -111,6 +131,15 @@ class System:
 
     # adding to system
     def add(self, additive: Literal[Layer, Self], idx: int = None):
+        """Add a layer or another system.
+
+        Parameters
+        ----------
+        additive : Layer or System
+            Object to add.
+        idx : int or None, optional
+            Insertion index. Append when omitted.
+        """
         if isinstance(additive, Layer):
             self.add_layer(additive, idx)
         elif isinstance(additive, System):
@@ -119,8 +148,14 @@ class System:
             pass
 
     def add_layer(self, layer: Layer, idx: int = None):
-        """
-        Forces reset on initalisation
+        """Add a layer to the system.
+
+        Parameters
+        ----------
+        layer : Layer
+            Layer to add.
+        idx : int or None, optional
+            Insertion index. Append when omitted.
         """
         if self.system is None:
             self.system = [layer]
@@ -133,27 +168,35 @@ class System:
         self._updateActive()
 
     def add_system(self, system: Self, idx: int = None):
+        """Add each layer from another system in sequence."""
         for layer in system.system:
             self.add_layer(layer, idx)
         self._updateActive()
 
     # changing existing system
     def change_layer(self, layer: Layer, idx: int = -1):
-        """
-        Changes layer by index in the system
-        By default index is set to last layer.
+        """Replace a layer by index.
+
+        Parameters
+        ----------
+        layer : Layer
+            Replacement layer.
+        idx : int, default=-1
+            Index of the layer to replace.
         """
         assert self.numberLayers > 0
         self.system[idx] = layer
         self._updateActive()
 
     def update_energies(self, new_energies):
+        """Update all layers to use new energy values."""
         self.initialEnergies = new_energies
 
         for s in self:
             s.set_energies(new_energies)
 
     def update_engine(self, new_engine):
+        """Update the attenuation engine for every layer."""
         for s in self:
             s.set_engine(new_engine)
 
@@ -162,6 +205,18 @@ class System:
 
     # processing system
     def generate_response(self, initial_intensity=None):
+        """Generate the active-layer response matrix.
+
+        Parameters
+        ----------
+        initial_intensity : array-like or None, optional
+            Incident intensity at each energy. Uniform unit intensity is used
+            when omitted.
+
+        Notes
+        -----
+        The result is stored in :attr:`rm`.
+        """
         self._initaliseEnergies()
         self._updateActive()
 
@@ -188,13 +243,17 @@ class System:
             ts *= t1
 
     def get_profile(self, nstep=1000):
-        """
-        Returns the z profile deposition for radiation transmitting through
-        Thickness in mm, nstep is number of elements calculated
-        By default this is 1000 so the resolution is thickness/nstep.
+        """Calculate energy deposition throughout the layered system.
 
-        Solved for the full array, particles are tracked until they run out of energy
+        Parameters
+        ----------
+        nstep : int, default=1000
+            Number of depth steps.
 
+        Notes
+        -----
+        Results are stored in :attr:`output` with energy, track, active-layer,
+        and depth arrays.
         """
         # set target thickness as back of array
         cumulative_thickness = np.cumsum([s.thickness for s in self.system])
@@ -258,6 +317,7 @@ class System:
         # return (track_map, energy_map, zsteps)
 
     def get_criticalenergies(self):
+        """Calculate peak response energies and full-width edges."""
         if "energy_map" not in self.output.keys():
             self.get_profile()
 
@@ -287,9 +347,18 @@ class System:
 
     #### Presenting the array
     def plot_schematic(self, ax=None, yoff=0, seperator=True, colors=None):
-        """
-        Plots dictionary generated by buildRail in a readable format.
-        Includes lengths and colours for distinct materials
+        """Plot the layered system geometry.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes or None, optional
+            Axes on which to draw. A new axes is created when omitted.
+        yoff : float, default=0
+            Vertical offset for the schematic.
+        seperator : bool, default=True
+            Whether to draw the baseline separator.
+        colors : sequence or None, optional
+            Colors used for distinct materials.
         """
         # assign colors
         prop_cycle = plt.rcParams["axes.prop_cycle"]
@@ -335,6 +404,15 @@ class System:
         ax.legend(legendentry, obs, loc="center left", bbox_to_anchor=(1, 0.5))
 
     def plot_response(self, ax=None, ylim=[1e-4, None]):
+        """Plot the generated response matrix.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes or None, optional
+            Axes on which to draw.
+        ylim : sequence, default=[1e-4, None]
+            Y-axis limits.
+        """
         if ax is None:
             fig, ax = plt.subplots(1, 1)
 
@@ -351,10 +429,7 @@ class System:
 
     ### deal with dumping and loading the system back
     def to_dataframe(self):
-        """
-        Pretty_print function for the system
-        Mainly for debugging and checking.
-        """
+        """Return layer properties as a pandas DataFrame."""
         out = {
             "Name": [s.material.materialstr for s in self],
             "Compound": [s.material.material for s in self],
@@ -375,12 +450,7 @@ class System:
 
     ## generics
     def __getitem__(self, index: int) -> Layer:
-        """
-        Returns the layer at the index.
-
-        :param index: The index of the layer.
-        :type index: int
-        """
+        """Return the layer at ``index``."""
         return self.system[index]
 
     def __len__(self):
@@ -388,87 +458,70 @@ class System:
 
     # depreciating metods
     def addLayer(self, layer: Layer, idx: int = None):
-        """
-        `Depreciating` use `add_layer` instead
-        Forces reset on initalisation
-        """
+        """Deprecated alias for :meth:`add_layer`."""
         self.add_layer(layer, idx)
 
     def changeLayer(self, layer: Layer, idx=-1):
-        """
-        `Depreciating` use `change_layer` instead
-        Changes layer by index in the system
-        By default index is set to last layer.
-        """
+        """Deprecated alias for :meth:`change_layer`."""
         self.change_layer(layer, idx)
 
     def addSystem(self, system: Self):
-        """
-        `Depreciating` use `add_system` instead
-        Adds system to current system, layers are added sequentially
-        """
+        """Deprecated alias for :meth:`add_system`."""
         self.add_system(system)
 
     def updateEnergies(self, new_energies):
-        """
-        `Depreciating` use `update_energies` instead
-        Regenerate cross-sections for new energies
-        """
+        """Deprecated alias for :meth:`update_energies`."""
         self.update_energies(new_energies)
 
     def updateEngine(self, new_engine):
-        """
-        `Depreciating` use `update_engine` instead
-        Regenerate cross-sections for new engine
-        """
+        """Deprecated alias for :meth:`update_engine`."""
         self.update_engine(new_engine)
 
     def generateResponse(self, initial_intensity=None):
-        """
-        `Depreciating` use `generate_response` instead
-         Generates response matrix for system, if initial_intensity is provided it will be used as the initial intensity of the system, otherwise it will be assumed to be 1 for all energies.
-        """
+        """Deprecated alias for :meth:`generate_response`."""
         self.generate_response(initial_intensity)
 
 
 class LinearBuilder(System):
+    """System variant exposing one response row per indexed layer."""
+
     def __init__(self, system=None):
         System.__init__(self, system)
         self.type = "Linear"
 
     def __getitem__(self, index: int) -> np.ndarray:
-        """
-        Overrides the system __getitem__ method to retrieve entry in the response matrix
-        """
+        """Return a response-matrix row for an active layer."""
         if self.rm is None:
             self.generate_response()
         return self.rm[self.activeLayers[index], :]
 
 
 class ArealBuilder(System):
-    """
-    Builds a flat response matrix for a global filter/detector set and individual filters
+    """Build a response matrix for a global system and areal filters.
 
-    `Global_system` should be a macr.System that are common to all aspects of the areal filters
-    `Filter_system` is a list of macr.System or macr.Layer corresponding to unique regions in the filter pack these are exclusively passive layers, active layers supplied in the filter_system are ignored
+    Parameters
+    ----------
+    global_system : System
+        Common filter and detector layers.
+    filter_system : sequence of System or Layer
+        Passive filter regions. Active layers are ignored.
 
-    The response matrix is built as an array with size:
-        [Energies, len(filter_system) * global_system.activeLayers]
-
-    For a global_system with a single active layer:
-        self.rm[0,:] -> filter_system[0]
-        self.rm[N,:] -> filter_system[N]
-
-    For a global_system with M active layers:
-        self.rm[0,0,:] -> filter_system[0], global_system[global_system.activeLayers[0]]
-        self.rm[N,M,:] -> filter_system[N], global_system[global_system.activeLayers[M]]
-
-    Good practice should exclude active layers from the filter_system but this is not strictly prohibited
+    The resulting response matrix contains one block per filter region. It is
+    good practice to exclude active layers from ``filter_system``.
     """
 
     def __init__(
         self, global_system: System = None, filter_system: list[System | Layer] = None
     ):
+        """Initialize an areal response-matrix builder.
+
+        Parameters
+        ----------
+        global_system : System or None, optional
+            Common filter and detector layers.
+        filter_system : list of System or Layer or None, optional
+            Filter regions to apply to the global system.
+        """
         System.__init__(self, global_system)
         self.type = "Areal"
 
@@ -510,8 +563,13 @@ class ArealBuilder(System):
             self.rm = np.squeeze(self.rm)
 
     def generate_response(self, initial_intensity=None):
-        """
-        Overrides the System generate to avoid clashes
+        """Generate the areal response matrix.
+
+        Parameters
+        ----------
+        initial_intensity : array-like or None, optional
+            Incident intensity at each energy. Uniform unit intensity is used
+            when omitted.
         """
         self._build_rm()
         if initial_intensity is None:
@@ -527,9 +585,7 @@ class ArealBuilder(System):
         self.rm *= ts
 
     def __getitem__(self, index: int) -> np.ndarray:
-        """
-        Overrides the system __getitem__ method to retrieve entry in the response matrix
-        """
+        """Return a response-matrix row for an active layer."""
         if self.rm is None:
             self.generate_response()
         return self.rm[self.activeLayers[index], :]

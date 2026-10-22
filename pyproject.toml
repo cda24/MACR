@@ -7,6 +7,9 @@ version = "0.1.0"
 
 [project.optional-dependencies]
 test = ["pytest"]
+docs = ["sphinx>=9.0.4",
+    "sphinx-autodoc-typehints>=3.6.1",
+    "pydata-sphinx-theme>=0.16.1",]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -23,3 +26,11 @@ channels = ["conda-forge"]
 platforms = ["osx-arm64"]
 
 [tool.pixi.tasks]
+
+[dependency-groups]
+dev = [
+    "pydata-sphinx-theme>=0.23.0",
+    "pytest>=9.1.1",
+    "sphinx>=9.0.4",
+    "sphinx-autodoc-typehints>=3.6.1",
+]

@@ -4,38 +4,25 @@ from .engine import Engine
 
 
 class Material:
-    """
-    Material Class for pyNIST Library
+    """Calculate attenuation for a material composition.
 
-    Computes the necessary cross-sections from the defined database for any arbitary
-    material composition. Materials should be declared as camel-case elements such as
-    "SiO2" or "Al" for Quartz and elemental Aluminium respectively
-
-    Warning: Lowercase element names are ignored.
-
-    Intialisation Parameters
+    Parameters
     ----------
-    material - str - Chemical composition of material
-    density - float - g/cc
-    energies - array or None - array of desired energies in MeV if undeclared uses database defaults
-    engine - str or Engine - Engine declaration must be type: "str" or "Engine"
-                             For most efficient use pass pre-loaded Engine class (about 2x as fast)
-
-
-    Functions
-    ---------
-
-    Automatic - Happens during Initialisation:
-        generateCrossSections - sets cross-section (sigma) and energies corresponding to the material
-    Manual - Called by user:
-        get_transmission - calculates the transmission through material for thickness in mm
-        get_absorption - calculates the absorption in material for thickness in mm
-
+    material : str
+        Chemical formula, such as ``"SiO2"`` or ``"Al"``.
+    density : float
+        Material density in g/cm³.
+    energies : array-like or None, optional
+        Energy values in MeV. Database energies are used when omitted.
+    engine : str or Engine, default="NIST"
+        Database engine name or an already initialised :class:`Engine`.
+    generic_name : str or None, optional
+        Display name used when the material is shown in a system.
     """
 
     def __init__(
-        self, material, density, energies=None, engine="NIST", genericName=None
-    ):
+        self, material, density, energies=None, engine="NIST", generic_name=None
+    ) -> None:
         # initialise or use engine
         assert (isinstance(engine, str)) or (isinstance(engine, Engine))
 
@@ -55,13 +42,20 @@ class Material:
 
         self.update_cross_sections(energies)
 
-        if genericName is None:
+        if generic_name is None:
             self.materialstr = material
         else:
-            assert isinstance(genericName, str)
-            self.materialstr = genericName
+            assert isinstance(generic_name, str)
+            self.materialstr = generic_name
 
     def update_cross_sections(self, energies):
+        """Recalculate cross-sections at the specified energies.
+
+        Parameters
+        ----------
+        energies : array-like
+            Energy values in MeV.
+        """
         x = self.engine.database.atomic
         sigma = np.zeros_like(energies)
         total_weight = 0
@@ -84,24 +78,51 @@ class Material:
         ):
             self._estarcorrection()
 
-    def get_transmission(self, thickness):
-        """calculates the transmission of x-rays through a layer:
-        * thickness must be in mm"""
+    def get_transmission(self, thickness) -> np.ndarray:
+        """Calculate transmission through a layer.
+
+        Parameters
+        ----------
+        thickness : float
+            Layer thickness in mm.
+
+        Returns
+        -------
+        numpy.ndarray
+            Transmitted fraction at each energy.
+        """
         return np.exp(-self.sigma * self.density * (thickness * 0.1))
 
-    def get_absorption(self, thickness):
-        """calculates the absorption of x-rays through a layer:
-        * thickness must be in mm"""
+    def get_absorption(self, thickness) -> np.ndarray:
+        """Calculate absorption through a layer.
+
+        Parameters
+        ----------
+        thickness : float
+            Layer thickness in mm.
+
+        Returns
+        -------
+        numpy.ndarray
+            Absorbed fraction at each energy.
+        """
         return 1 - self.get_transmission(thickness)
 
-    def get_profile(self, thickness, nstep=1000):
-        """
-        Returns the z profile deposition for radiation transmitting through
-        Thickness in mm, nstep is number of elements calculated
-        By default this is 1000 so the resolution is thickness/nstep.
+    def get_profile(self, thickness, nstep=1000) -> None:
+        """Calculate the z profile deposition for radiation transmitting through.
 
+        Parameters
+        ----------
+        thickness : float
+            Material thickness in mm.
+        nstep : int, default=1000
+            Number of elements calculated. By default this is 1000 so the resolution is thickness/nstep.
+
+        Notes
+        -----
         Solved for the full array, particles are tracked until they run out of energy
 
+        Results are stored in :attr:`output` with ``energy_map``, ``track_map``, and ``zsteps`` entries.
         """
         # initialise seed energies
         hold_energies = self.energies
@@ -138,7 +159,7 @@ class Material:
         self.output["zsteps"] = zsteps
 
     def _estarcorrection(self):
-        """correction for the estar units"""
+        """Apply the unit correction required by ESTAR, PSTAR, and SRIM."""
         self.sigma = self.sigma / self.energies
 
     def _parse_compound(self, compound):
@@ -147,12 +168,32 @@ class Material:
 
     # depreciating functions
     def generateCrossSections(self, material, energies):
+        """Deprecated alias for :meth:`update_cross_sections`."""
         self.update_cross_sections(energies)
 
     def regenerateCrossSections(self):
+        """Deprecated alias for :meth:`update_cross_sections`."""
         self.update_cross_sections(self.energies)
 
 class Scintillator(Material):
+    """Material with a scintillator response scaling factor.
+
+    Parameters
+    ----------
+    material : str
+        Chemical formula.
+    density : float
+        Material density in g/cm³.
+    kappa : float, default=1.0
+        Scintillator scaling factor from energy deposition to counts.
+    energies : array-like or None, optional
+        Energy values in MeV.
+    engine : str or Engine, default="NIST"
+        Database engine name or an initialised engine.
+    generic_name : str or None, optional
+        Display name for the material.
+    """
+
     def __init__(
         self,
         material,
@@ -160,7 +201,7 @@ class Scintillator(Material):
         kappa=1.0,
         energies=None,
         engine="NIST",
-        genericName=None,
-    ):
-        super().__init__(material, density, energies, engine, genericName)
+        generic_name=None,
+    ) -> None:
+        super().__init__(material, density, energies, engine, generic_name)
         self.kappa = kappa

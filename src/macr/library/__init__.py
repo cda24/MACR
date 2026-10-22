@@ -1,7 +1,16 @@
+"""Predefined materials, detector systems, and shared library settings.
+
+The library exposes ready-to-use :class:`macr.material.Material`,
+:class:`macr.material.Scintillator`, and :class:`macr.system.System` objects.
+The shared :data:`ENERGIES` grid and :data:`ENGINE` instance are used when
+constructing these objects and can be replaced before importing a submodule
+that depends on them.
+"""
+
 import numpy as np
 from ..engine import Engine
 
-# Declarations up top for rest of system, can all be redefined during calls
+# Declarations used by the predefined library objects.
 ENERGIES = np.geomspace(0.01, 1, 10000)
 ENGINE = Engine("NIST")  # feature complete, changes to other engines might cause errors
 

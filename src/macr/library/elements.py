@@ -1,3 +1,8 @@
+"""Predefined element materials.
+
+Each exported symbol is a :class:`macr.material.Material` configured with the element's density and the shared library energy grid and engine.
+"""
+
 from ..material import Material
 from ..library import ENERGIES, ENGINE
 
